@@ -1,0 +1,19 @@
+__pycache__
+VOCdevkit
+checkpoints
+.vscode
+*.pyc
+.idea/
+__pycache__
+results
+checkpoints_bak
+cityscapes
+test_results
+.venv
+.zip
+.png
+.jpg
+.csv
+spec.txt
+best_models
+Dataset Preparation
