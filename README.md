@@ -130,8 +130,9 @@ The post-processing is applied to the area covered by the heatmaps for each clas
      - Generate new centers along the width if the contour is wider than tall.
 
 This post-processing function refines tip localization by splitting large clusters into multiple points, improving the model's accuracy in cases where tips are close together.
-
-
+![#1 example](assets/982.post_processed.jpg)
+![#2 example](assets/181R.post_processed.jpg)
+![#3 example](assets/457.post_processed.jpg)
 # Results 
 | Metric                 | Deeplabv3+ (Base) | Deeplabv3+ (PP) | RootTracer-café (Base) | 3head model_#4 (Base) | PP model_#4 | 3head model_#6 (Base) |  PP #6 |
 |------------------------|-------------------|---------------------------|-------------------------|---------------------|-----------------------|---------------------------|--------------------------------|
