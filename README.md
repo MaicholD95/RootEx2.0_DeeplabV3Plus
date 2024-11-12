@@ -1,6 +1,6 @@
 # Rootex 3.0
 
-Approccio basato sul metodo multihead e resnet, 1 classificatore Deeplabv3+ per ogni classe (Root,tip,source).
+Approach based on the multi-head method and ResNet, with one Deeplabv3+ classifier for each class (Root, Tip, Source).
 
 # Weight:
 Resnet50/101 backbone pth on DeeplabV3\pth
