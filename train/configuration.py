@@ -4,7 +4,8 @@ from losses.loss import DiceLoss, FocalLoss, TverskyLoss
 
 # Define the dataset and pretrained backbone paths
 dataset_path = r"D:\WORK\DATA\root\semantic_segm_deeplabv3+_multiclass_masks\Cropped_512_tip_aug_mixed_Res"
-pretrained_backbone_path = 'DeepLabV3\pth\best_deeplabv3_resnet50_voc_os16.pth'
+pretrained_backbone_path = 'DeepLabV3\\pth\\best_deeplabv3_resnet50_voc_os16.pth'
+
 
 
 # Loss function configurations
