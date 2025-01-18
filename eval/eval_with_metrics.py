@@ -46,24 +46,24 @@ if __name__ == "__main__":
 
     # Model path
     model_path = 'best_models\\best_model_Exp_6_Dice_BCE_W_#1_LR_1e-4_ReduceLROnPlateau_2_Weights_0.5_0.5_8_20.pth'
-
+    #model_path = r'C:\Users\maich\Desktop\best_model_Exp_101_2__nocontr_3px_8stride_B20_6_Dice_BCE_W_10_20_#1_LR_1e-4_ReduceLROnPlateau_2_Weights_0.3_0.7_1_2.pth'
     # Instantiate Predictor with desired thresholds and parameters
     predictor = Predictor(
         model_path,
         device=device,
         resize_height=1400,
-        resize_width=1400,
+        resize_width=1200,
         root_threshold=0.5,
         tip_threshold=0.7,
         source_threshold=0.3,
         sigma=15,            # Custom sigma value
-        area_threshold=320,  # Custom area_threshold
+        area_threshold=320,  # Custom area_threshold (320)
         circle_radius=20,    # Custom circle_radius for number_of_circles calculation
         spacing_radius=18    # Custom spacing_radius for spacing calculation
     )
 
     # Load dataset
-    dataset_path = r"D:\WORK\DATA\root\semanticSegm\test"
+    dataset_path = r"C:\Users\maich\Desktop\rootex3\RootEx3.0_GetRsml\test_images"
     test_json_files = glob(os.path.join(dataset_path, '*.json'))
     test_dataset = CustomRGBDataset(json_files=test_json_files, image_dir=dataset_path, phase='test', isTraining=False)
 

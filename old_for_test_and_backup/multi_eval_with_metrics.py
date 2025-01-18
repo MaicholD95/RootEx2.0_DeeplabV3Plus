@@ -30,7 +30,7 @@ class Predictor:
         
         self.transform = None
         self.pred_root_threshold = 0.8
-        self.pred_tip_threshold = 0.3
+        self.pred_tip_threshold = 0.5
         self.pred_source_threshold = 0.3
 
     def set_transform(self, height, width):
@@ -186,7 +186,7 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 model_path = 'best_model_Exp_6_Dice_BCE_W_#1_LR_1e-4_ReduceLROnPlateau_2_Weights_0.5_0.5_8_20.pth'
 model_path = 'best_model_Exp_7_B20_6_Dice_BCE_W_10_20_#1_LR_1e-4_ReduceLROnPlateau_1_Weights_0.1_0.9_1_2.pth'
 model_path ='best_model_Exp_9_B20_6_Dice_BCE_W_10_20_#1_LR_1e-4_ReduceLROnPlateau_1_Weights_0.1_0.9_2_5.pth'
-
+model_path= r'C:\Users\maich\Desktop\best_model_Exp_101_2__nocontr_3px_8stride_B20_6_Dice_BCE_W_10_20_#1_LR_1e-4_ReduceLROnPlateau_2_Weights_0.3_0.7_1_2.pth'
 predictor = Predictor(model_path, device=device)
 
 dataset_path = r"D:\WORK\DATA\root\semanticSegm\test"

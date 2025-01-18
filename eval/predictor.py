@@ -22,7 +22,7 @@ class Predictor:
         resize_height=1400,
         resize_width=1400,
         root_threshold=0.5,
-        tip_threshold=0.5,
+        tip_threshold=0.7,
         source_threshold=0.3,
         sigma=15,
         area_threshold=320,
@@ -220,7 +220,7 @@ class Predictor:
             area = cv2.contourArea(cnt)
             (cX, cY), radius_contour = cv2.minEnclosingCircle(cnt)
             cX, cY = int(cX), int(cY)
-            if area < 3:
+            if area < 10:
                 continue
             if area > self.area_threshold and tips_selected:
                 x, y, w, h = cv2.boundingRect(cnt)
@@ -311,6 +311,7 @@ class Predictor:
                         else:
                             missing_count += 1
                             overestimate_count += 1
+                            
                     mask_indices = set(range(len(selected_center)))
                     pred_indices = set(range(len(pred_centers)))
                     unmatched_mask_indices = mask_indices - set(row_ind)
