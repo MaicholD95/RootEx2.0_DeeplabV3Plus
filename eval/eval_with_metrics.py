@@ -15,7 +15,7 @@ from dataset import CustomRGBDataset
 
 def predict_and_visualize(predictor, dataset, index):
     annotation = dataset.data[index][0]
-    img_name = annotation['root']['name']
+    img_name = annotation['root']['name'].replace('rsml','jpg')
     if "\\" in img_name or "/" in img_name:
         img_name = os.path.basename(img_name)
     image_path = os.path.join(dataset.image_dir, img_name)
@@ -26,10 +26,17 @@ def predict_and_visualize(predictor, dataset, index):
     gt_source_centers = []
     for root in dataset.data[index]:
         if 'tip' in root and root['tip']:
-            gt_tip_centers.append((root['tip']['x'], root['tip']['y']))
+            # for tip in root['tip']:
+                #if (tip['x'], tip['y']) not in gt_tip_centers:
+                    #gt_tip_centers.append((tip['x'], tip['y']))
+                if (root['tip']['x'], root['tip']['y']) not in gt_tip_centers:
+                    gt_tip_centers.append((root['tip']['x'], root['tip']['y']))
+                    
+           # gt_tip_centers.append((root['tip']['x'], root['tip']['y']))
         if 'source' in root and root['source']:
             if (root['source']['x'], root['source']['y']) not in gt_source_centers:
                 gt_source_centers.append((root['source']['x'], root['source']['y']))
+                
     masks_array = dataset._create_rgb_mask(dataset.data[index], image.shape[:2])
     masks_array = masks_array.transpose(2, 0, 1)
 
@@ -40,21 +47,23 @@ def predict_and_visualize(predictor, dataset, index):
     preds = predictor.predict(image)
 
     predictor.visualize(image, preds, masks, img_name, gt_tip_centers, gt_source_centers)
-
+    #predictor.visualize_postprocessing_steps(image,img_name,gt_tip_centers)
+    predictor.visualize_prediction_vs_gt(image,masks['roots'],preds['roots'],img_name)
+    print(f"Image: {img_name}")
 if __name__ == "__main__":
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     # Model path
-    model_path = 'best_models\\best_model_Exp_6_Dice_BCE_W_#1_LR_1e-4_ReduceLROnPlateau_2_Weights_0.5_0.5_8_20.pth'
-    #model_path = r'C:\Users\maich\Desktop\best_model_Exp_101_2__nocontr_3px_8stride_B20_6_Dice_BCE_W_10_20_#1_LR_1e-4_ReduceLROnPlateau_2_Weights_0.3_0.7_1_2.pth'
+    model_path = r'C:\Users\maich\Desktop\rootex3\best_model_Exp_6_Dice_BCE_W_#1_LR_1e-4_ReduceLROnPlateau_2_Weights_0.5_0.5_8_20.pth'
+    #model_path = r'best101_OSR.pth'
     # Instantiate Predictor with desired thresholds and parameters
     predictor = Predictor(
         model_path,
         device=device,
         resize_height=1400,
-        resize_width=1200,
+        resize_width=1400,
         root_threshold=0.5,
-        tip_threshold=0.7,
+        tip_threshold=0.52,
         source_threshold=0.3,
         sigma=15,            # Custom sigma value
         area_threshold=320,  # Custom area_threshold (320)
@@ -63,7 +72,8 @@ if __name__ == "__main__":
     )
 
     # Load dataset
-    dataset_path = r"C:\Users\maich\Desktop\rootex3\RootEx3.0_GetRsml\test_images"
+    #dataset_path = r"C:\Users\maich\Desktop\rootnav_to_R3_dataset\OSR_Challenge_DB\test"
+    dataset_path = r"C:\Users\maich\Desktop\rootex_Paper\RSML\full_test_imgs"
     test_json_files = glob(os.path.join(dataset_path, '*.json'))
     test_dataset = CustomRGBDataset(json_files=test_json_files, image_dir=dataset_path, phase='test', isTraining=False)
 

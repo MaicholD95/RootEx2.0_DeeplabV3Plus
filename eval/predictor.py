@@ -30,7 +30,7 @@ class Predictor:
         spacing_radius=18
     ):
         self.device = torch.device(device)
-        self.model = MultiHeadDeeplabV3Plus(pretrained_backbone_path=None).to(self.device)
+        self.model = MultiHeadDeeplabV3Plus(backbone='resnet50',pretrained_backbone_path=None).to(self.device)
         checkpoint = torch.load(model_path, map_location=self.device)
 
         # Handle models saved with DataParallel
@@ -76,7 +76,33 @@ class Predictor:
 
         self.total_gt_tips = 0
         self.total_gt_sources = 0
+    def post_process_mask(self, mask, kernel_size=(1, 1), blur_kernel=(2, 2)):
+        """
+        Applica un'operazione morfologica di closing seguita da un Gaussian blur alla maschera.
+        
+        Args:
+            mask (np.array): Maschera binaria in formato numpy (valori 0 e 1).
+            kernel_size (tuple): Dimensione del kernel per il closing.
+            blur_kernel (tuple): Dimensione del kernel per il blur.
+            
+        Returns:
+            np.array: Maschera post-processata.
+        """
+        # Converti la maschera in uint8 (0 e 255)
+        mask_uint8 = (mask * 255).astype(np.uint8)
+        
+        # Definisci il kernel per l'operazione morfologica
+        kernel = np.ones(kernel_size, np.uint8)
+        mask_closed = cv2.morphologyEx(mask_uint8, cv2.MORPH_CLOSE, kernel)
+        
+        # Applica il Gaussian blur per rendere i bordi più omogenei
+       # mask_blurred = cv2.GaussianBlur(mask_closed, blur_kernel, 0)
+        
+        #_, mask_processed = cv2.threshold(mask_blurred, 127, 1, cv2.THRESH_BINARY)
+        _, mask_processed = cv2.threshold(mask_closed, 127, 1, cv2.THRESH_BINARY)
 
+        return mask_processed
+    
     def predict(self, image):
         H_orig, W_orig = image.shape[:2]
         augmented = self.transform(image=image)
@@ -91,11 +117,11 @@ class Predictor:
 
             # Resize outputs to original image size using bilinear interpolation
             outputs['roots'] = torch.nn.functional.interpolate(
-                outputs['roots'], size=(H_orig, W_orig), mode='bilinear', align_corners=False)
+                outputs['roots'], size=(H_orig, W_orig), mode='bicubic', align_corners=False)
             outputs['tips'] = torch.nn.functional.interpolate(
-                outputs['tips'], size=(H_orig, W_orig), mode='bilinear', align_corners=False)
+                outputs['tips'], size=(H_orig, W_orig), mode='bicubic', align_corners=False)
             outputs['sources'] = torch.nn.functional.interpolate(
-                outputs['sources'], size=(H_orig, W_orig), mode='bilinear', align_corners=False)
+                outputs['sources'], size=(H_orig, W_orig), mode='bicubic', align_corners=False)
 
             # Apply thresholds after resizing
             preds_roots = (outputs['roots'] > self.root_threshold).float()
@@ -106,7 +132,11 @@ class Predictor:
             preds_roots = preds_roots.cpu().numpy()[0, 0, :, :]
             preds_tips = preds_tips.cpu().numpy()[0, 0, :, :]
             preds_sources = preds_sources.cpu().numpy()[0, 0, :, :]
-
+            
+            # Applica il post-processing (closing + blur) a ciascuna maschera
+            preds_roots = self.post_process_mask(preds_roots)
+            preds_tips = self.post_process_mask(preds_tips)
+            preds_sources = self.post_process_mask(preds_sources)
             # Store predictions in a dictionary
             preds_resized = {
                 'roots': preds_roots,
@@ -184,6 +214,7 @@ class Predictor:
                 for center in centers:
                     cv2.circle(overlaid, (int(center[0]), int(center[1])), 10, (0, 255, 0), -1)
                     cv2.drawMarker(overlaid, (int(center[0]), int(center[1])), (255, 0, 0), markerType=cv2.MARKER_CROSS, markerSize=10, thickness=2)
+                    
                 title = f'Predicted {class_name}'
                 if distance_scores[class_name]:
                     avg_distance = np.mean(distance_scores[class_name])
@@ -275,21 +306,25 @@ class Predictor:
                 tips_selected = (class_name == 'tips')
                 selected_center = gt_tips_center if tips_selected else gt_source_center
                 pred_centers = self.compute_enclosing_circle_centers(pred, tips_selected)
+
                 if class_name == 'tips':
                     self.total_gt_tips += len(gt_tips_center)
                 elif class_name == 'sources':
                     self.total_gt_sources += len(gt_source_center)
 
                 if not pred_centers and not selected_center:
-                    distances = []
+                    good_distances = []
+                    full_distances = []
                     missing_count = 0
                     overestimate_count = 0
                 elif not pred_centers:
-                    distances = []
+                    good_distances = []
+                    full_distances = [1.0] * len(selected_center)
                     missing_count = len(selected_center)
                     overestimate_count = 0
                 elif not selected_center:
-                    distances = []
+                    good_distances = []
+                    full_distances = [1.0] * len(pred_centers)
                     missing_count = 0
                     overestimate_count = len(pred_centers)
                 else:
@@ -298,38 +333,167 @@ class Predictor:
                         for p_idx, p_center in enumerate(pred_centers):
                             distance = np.linalg.norm(np.array(m_center) - np.array(p_center))
                             cost_matrix[m_idx, p_idx] = distance
+
                     row_ind, col_ind = linear_sum_assignment(cost_matrix)
-                    distances = []
-                    MISSING_W = self.sigma / 2
+
+                    good_distances = []
+                    full_distances = []
                     missing_count = 0
                     overestimate_count = 0
 
                     for m_idx, p_idx in zip(row_ind, col_ind):
-                        norm_distance = cost_matrix[m_idx, p_idx] / self.sigma
-                        if norm_distance <= MISSING_W / 2:
-                            distances.append(norm_distance)
-                        else:
-                            missing_count += 1
-                            overestimate_count += 1
-                            
+                        real_distance = cost_matrix[m_idx, p_idx]
+                        normalized_distance = real_distance / (self.sigma / 2)
+                        penalty = min(1.0, normalized_distance)
+
+                        if normalized_distance <= 1.0:  # Acceptable (inside full diameter)
+                            good_distances.append(penalty)
+
+                        full_distances.append(penalty)
+
+                    # Handle unmatched points
                     mask_indices = set(range(len(selected_center)))
                     pred_indices = set(range(len(pred_centers)))
                     unmatched_mask_indices = mask_indices - set(row_ind)
                     unmatched_pred_indices = pred_indices - set(col_ind)
+
                     missing_count += len(unmatched_mask_indices)
                     overestimate_count += len(unmatched_pred_indices)
-                    if class_name == 'tips':
-                        weighted_distance_scores[class_name] = copy.deepcopy(distances)
-                        for _ in range(missing_count):
-                            weighted_distance_scores[class_name].append(MISSING_W)
-                        for _ in range(overestimate_count):
-                            weighted_distance_scores[class_name].append(MISSING_W)
-                    else:
-                        weighted_distance_scores[class_name] = None
+
+                    full_distances += [1.0] * (missing_count + overestimate_count)
+
+                # Save scores
                 iou_scores[class_name] = None
                 dice_scores[class_name] = None
-                distance_scores[class_name] = distances
+                distance_scores[class_name] = good_distances
+                weighted_distance_scores[class_name] = full_distances
                 missing_counts[class_name] = missing_count
                 overestimate_counts[class_name] = overestimate_count
 
         return iou_scores, dice_scores, distance_scores, missing_counts, overestimate_counts, weighted_distance_scores
+
+
+    def visualize_postprocessing_steps(self, image, name="postprocess_debug", gt_tip_centers=None):
+        H_orig, W_orig = image.shape[:2]
+        augmented = self.transform(image=image)
+        image_tensor = augmented['image'].unsqueeze(0).to(self.device)
+
+        with torch.no_grad():
+            outputs = self.model(image_tensor)
+            # Apply sigmoid
+            prob_tips = torch.sigmoid(outputs['tips'])
+
+            # Resize to original shape
+            prob_tips = torch.nn.functional.interpolate(
+                prob_tips, size=(H_orig, W_orig), mode='bicubic', align_corners=False).cpu().numpy()[0, 0]
+
+            # Thresholded
+            bin_tips = (prob_tips > self.tip_threshold).astype(np.uint8)
+
+            # Post-processed masks
+            post_tips = self.post_process_mask(bin_tips)
+
+        # Compute predicted centers
+        pred_centers = self.compute_enclosing_circle_centers(post_tips, tips_selected=True)
+
+        # Create image overlays
+        original_with_markers = image.copy()
+        tip_overlay_only = self.overlay_mask_on_image(image.copy(), post_tips, color=(0, 0, 255))  # Just blue mask
+        overlay_pred_only = tip_overlay_only.copy()
+        overlay_with_gt = tip_overlay_only.copy()
+
+        # Predicted tips (green cross)
+        for center in pred_centers:
+            pt = (int(center[0]), int(center[1]))
+            #cv2.drawMarker(original_with_markers, pt, (0, 255, 0), markerType=cv2.MARKER_CROSS, markerSize=10, thickness=2)
+            cv2.drawMarker(overlay_pred_only, pt, (0, 255, 0), markerType=cv2.MARKER_CROSS, markerSize=10, thickness=2)
+            cv2.drawMarker(overlay_with_gt, pt, (0, 255, 0), markerType=cv2.MARKER_CROSS, markerSize=10, thickness=2)
+
+        # GT tips (red circle)
+        if gt_tip_centers is not None:
+            for center in gt_tip_centers:
+                pt = (int(center[0]), int(center[1]))
+                cv2.circle(original_with_markers, pt, 8, (255, 0, 0), 2)
+                cv2.circle(overlay_with_gt, pt, 8, (255, 0, 0), 2)
+
+        # Plot all steps
+        fig, axes = plt.subplots(1, 7, figsize=(28, 5))
+        titles = [
+            "Original + GT + Pred",
+            "Prob Map",
+            "Thresholded",
+            "Post-processed",
+            "Overlay Only (Blue Tip)",
+            "Overlay + Pred Tips",
+            "Overlay + Pred + GT"
+        ]
+
+        axes[0].imshow(original_with_markers)
+        axes[1].imshow(prob_tips, cmap='gray')
+        axes[2].imshow(bin_tips, cmap='gray')
+        axes[3].imshow(post_tips, cmap='gray')
+        axes[4].imshow(tip_overlay_only)
+        axes[5].imshow(overlay_pred_only)
+        axes[6].imshow(overlay_with_gt)
+
+        for idx, ax in enumerate(axes):
+            ax.set_title(titles[idx])
+            ax.axis('off')
+
+        plt.tight_layout()
+        os.makedirs("debug_postprocess", exist_ok=True)
+        plt.savefig(os.path.join("debug_postprocess", f"{name}.jpg"), dpi=600)
+        plt.close()
+        
+    def visualize_prediction_vs_gt(self, image, gt_mask, pred_mask, name="debug_overlap"):
+        """
+        Visualize:
+        - Green: correct predictions (TP),
+        - Red: predicted but not in GT (FP),
+        - White: GT not predicted (FN).
+        
+        Args:
+            image (np.array): Original image.
+            gt_mask (np.array): Ground truth binary mask.
+            pred_mask (np.array): Predicted binary mask.
+            name (str): Output file name.
+        """
+        # Ensure binary masks
+        gt_mask = (gt_mask > 0.5).astype(np.uint8)
+        pred_mask = (pred_mask > 0.5).astype(np.uint8)
+
+        # Identify regions
+        tp = np.logical_and(gt_mask == 1, pred_mask == 1)     # green
+        fp = np.logical_and(gt_mask == 0, pred_mask == 1)     # red
+        fn = np.logical_and(gt_mask == 1, pred_mask == 0)     # yellow
+
+        # Copy the image
+        overlay = image.copy()
+
+        # Draw green for TP
+        overlay[tp] = (0.5 * overlay[tp] + 0.5 * np.array([0, 255, 0])).astype(np.uint8)
+
+        # Draw red for FP
+        overlay[fp] = (0.5 * overlay[fp] + 0.5 * np.array([255, 0, 0])).astype(np.uint8)
+
+        # Draw yellow for FN
+        overlay[fn] = (0.5 * overlay[fn] + 0.5 * np.array([255, 255, 0])).astype(np.uint8)
+
+        # Plot all
+        fig, axes = plt.subplots(1, 4, figsize=(20, 5), dpi=300)
+        axes[0].imshow(image)
+        axes[0].set_title("Original")
+        axes[1].imshow(gt_mask, cmap='gray')
+        axes[1].set_title("GT Mask")
+        axes[2].imshow(pred_mask, cmap='gray')
+        axes[2].set_title("Prediction")
+        axes[3].imshow(overlay)
+        axes[3].set_title("Overlay\nGreen=TP, Red=FP, yellow=GT")
+
+        for ax in axes:
+            ax.axis('off')
+
+        os.makedirs("debug_overlap", exist_ok=True)
+        plt.tight_layout()
+        plt.savefig(os.path.join("debug_overlap", f"{name}.jpg"))
+        plt.close()

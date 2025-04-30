@@ -92,7 +92,7 @@ class CustomRGBDataset(Dataset):
                 points_y = annotation['root']['points']['all_points_y']
                 root_points = list(zip(points_x, points_y))
                 if root_points:
-                    heatmap = _create_heatmap((shape[0], shape[1]), root_points, sigma=5)
+                    heatmap = _create_heatmap((shape[0], shape[1]), root_points, sigma=7)
                     mask[:, :, class_to_channel['root']] = np.maximum(mask[:, :, class_to_channel['root']], heatmap)
         
         # Generate the tip mask using bounding boxes
@@ -109,8 +109,12 @@ class CustomRGBDataset(Dataset):
                         mask[y_min:y_max, x_min:x_max, class_to_channel['tip']] = 1.0
 
                 else:
+                    #resnet50 r3
                     x= annotation['tip']['x']
                     y= annotation['tip']['y']
+                    #resnet101 osr
+                    # for elem in annotation['tip']:
+                    #     x, y = elem['x'], elem['y']
                     x_min = max(0, int(x - box_size / 2))
                     x_max = min(shape[1], int(x + box_size / 2))
                     y_min = max(0, int(y - box_size / 2))
