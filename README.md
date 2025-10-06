@@ -1,4 +1,4 @@
-# Rootex 3.0
+# Rootex 2.0
 
 Approach based on the multi-head method and ResNet, with one Deeplabv3+ classifier for each class (Root, Tip, Source).
 
